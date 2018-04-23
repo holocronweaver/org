@@ -4580,6 +4580,7 @@ is active."
 			(setq marker (org-agenda-new-marker (point))
 			      category (org-get-category)
 			      level (make-string (org-reduced-level (org-outline-level)) ? )
+                              priority (org-get-priority)
 			      inherited-tags
 			      (or (eq org-agenda-show-inherited-tags 'always)
 				  (and (listp org-agenda-show-inherited-tags)
@@ -4592,13 +4593,13 @@ is active."
 				   ""
 				   (buffer-substring-no-properties
 				    beg1 (point-at-eol))
-				   level category tags t))
+				   level category priority tags t))
 			(org-add-props txt props
 			  'org-marker marker 'org-hd-marker marker
 			  'org-todo-regexp org-todo-regexp
 			  'level level
 			  'org-complex-heading-regexp org-complex-heading-regexp
-			  'priority 1000
+			  'priority priority
 			  'type "search")
 			(push txt ee)
 			(goto-char (1- end))))))))))
@@ -5076,7 +5077,7 @@ of what a project is and how to check if it stuck, customize the variable
       (setq entries
 	    (mapcar
 	     (lambda (x)
-	       (setq x (org-agenda-format-item "" x nil "Diary" nil 'time))
+	       (setq x (org-agenda-format-item "" x nil "Diary" nil nil 'time))
 	       ;; Extend the text properties to the beginning of the line
 	       (org-add-props x (text-properties-at (1- (length x)) x)
 		 'type "diary" 'date date 'face 'org-agenda-diary))
@@ -5372,6 +5373,7 @@ and the timestamp type relevant for the sorting strategy in
 	      ts-date (car ts-date-pair)
 	      ts-date-type (cdr ts-date-pair)
 	      txt (org-trim (buffer-substring (match-beginning 2) (match-end 0)))
+              priority (1+ (org-get-priority))
 	      inherited-tags
 	      (or (eq org-agenda-show-inherited-tags 'always)
 		  (and (listp org-agenda-show-inherited-tags)
@@ -5381,8 +5383,7 @@ and the timestamp type relevant for the sorting strategy in
 			   (memq 'todo org-agenda-use-tag-inheritance))))
 	      tags (org-get-tags-at nil (not inherited-tags))
 	      level (make-string (org-reduced-level (org-outline-level)) ? )
-	      txt (org-agenda-format-item "" txt level category tags t)
-	      priority (1+ (org-get-priority txt)))
+	      txt (org-agenda-format-item "" txt level category priority tags t))
 	(org-add-props txt props
 	  'org-marker marker 'org-hd-marker marker
 	  'priority priority
@@ -5581,6 +5582,9 @@ displayed in agenda view."
 		       (assq (point) deadline-position-alist))
 	      (throw :skip nil))
 	    (let* ((category (org-get-category pos))
+                   (priority (if habit?
+                                 (org-habit-get-priority (org-habit-parse-todo))
+                               (org-get-priority item)))
 		   (inherited-tags
 		    (or (eq org-agenda-show-inherited-tags 'always)
 			(and (consp org-agenda-show-inherited-tags)
@@ -5599,11 +5603,10 @@ displayed in agenda view."
 		   (item
 		    (org-agenda-format-item
 		     (and inactive? org-agenda-inactive-leader)
-		     head level category tags time-stamp org-ts-regexp habit?)))
+		     head level category priority tags
+                     time-stamp org-ts-regexp habit?)))
 	      (org-add-props item props
-		'priority (if habit?
-			      (org-habit-get-priority (org-habit-parse-todo))
-			    (org-get-priority item))
+		'priority priority
 		'org-marker (org-agenda-new-marker pos)
 		'org-hd-marker (org-agenda-new-marker)
 		'date date
@@ -5646,6 +5649,7 @@ displayed in agenda view."
 	  (setq marker (org-agenda-new-marker beg)
 		level (make-string (org-reduced-level (org-outline-level)) ? )
 		category (org-get-category beg)
+                priority (org-get-priority)
 		inherited-tags
 		(or (eq org-agenda-show-inherited-tags 'always)
 		    (and (listp org-agenda-show-inherited-tags)
@@ -5668,7 +5672,7 @@ displayed in agenda view."
 	    (if (string-match "\\S-" r)
 		(setq txt r)
 	      (setq txt "SEXP entry returned empty string"))
-	    (setq txt (org-agenda-format-item extra txt level category tags 'time))
+	    (setq txt (org-agenda-format-item extra txt level category priority tags 'time))
 	    (org-add-props txt props 'org-marker marker
 			   'date date 'todo-state todo-state
 			   'level level 'type "sexp" 'warntime warntime)
@@ -5796,6 +5800,7 @@ then those holidays will be skipped."
 	      (throw :skip nil)
 	    (goto-char (match-beginning 0))
 	    (setq hdmarker (org-agenda-new-marker)
+                  priority (org-get-priority)
 		  inherited-tags
 		  (or (eq org-agenda-show-inherited-tags 'always)
 		      (and (listp org-agenda-show-inherited-tags)
@@ -5817,8 +5822,7 @@ then those holidays will be skipped."
 			(closedp "Closed:    ")
 			(statep (concat "State:     (" state ")"))
 			(t (concat "Clocked:   (" clocked  ")")))
-		       txt level category tags timestr)))
-	  (setq priority 100000)
+		       txt level category priority tags timestr)))
 	  (org-add-props txt props
 	    'org-marker marker 'org-hd-marker hdmarker 'face 'org-agenda-done
 	    'priority priority 'level level
@@ -6046,6 +6050,13 @@ specification like [h]h:mm."
 		   (level (make-string (org-reduced-level (org-outline-level))
 				       ?\s))
 		   (head (buffer-substring (point) (line-end-position)))
+                   (priority
+                    ;; Adjust priority to today reminders about deadlines.
+                    ;; Overdue deadlines get the highest priority
+                    ;; increase, then imminent deadlines and eventually
+                    ;; more distant deadlines.
+                    (let ((adjust (if today? (- diff) 0)))
+                      (+ adjust (org-get-priority))))
 		   (inherited-tags
 		    (or (eq org-agenda-show-inherited-tags 'always)
 			(and (listp org-agenda-show-inherited-tags)
@@ -6073,7 +6084,7 @@ specification like [h]h:mm."
 			((and today? (< deadline today)) (format past (- diff)))
 			((and today? (> deadline today)) (format future diff))
 			(t now)))
-		     head level category tags time))
+		     head level category priority tags time))
 		   (face (org-agenda-deadline-face
 			  (- 1 (/ (float diff) (max wdays 1)))))
 		   (upcoming? (and today? (> deadline today)))
@@ -6084,13 +6095,7 @@ specification like [h]h:mm."
 		'warntime warntime
 		'level level
 		'ts-date deadline
-		'priority
-		;; Adjust priority to today reminders about deadlines.
-		;; Overdue deadlines get the highest priority
-		;; increase, then imminent deadlines and eventually
-		;; more distant deadlines.
-		(let ((adjust (if today? (- diff) 0)))
-		  (+ adjust (org-get-priority item)))
+		'priority priority
 		'todo-state todo-state
 		'type (if upcoming? "upcoming-deadline" "deadline")
 		'date (if upcoming? date deadline)
@@ -6236,16 +6241,19 @@ scheduled items with an hour specification like [h]h:mm."
 	  ;; Skip habits if `org-habit-show-habits' is nil, or if we
 	  ;; only show them for today.  Also skip done habits.
 	  (when (and habitp
-		     (or donep
-			 (not (bound-and-true-p org-habit-show-habits))
-			 (and (not todayp)
-			      (bound-and-true-p
-			       org-habit-show-habits-only-for-today))))
+                     (or donep
+                         (not (bound-and-true-p org-habit-show-habits))
+                         (and (not todayp)
+                              (bound-and-true-p
+                               org-habit-show-habits-only-for-today))))
 	    (throw :skip nil))
 	  (save-excursion
 	    (re-search-backward "^\\*+[ \t]+" nil t)
 	    (goto-char (match-end 0))
 	    (let* ((category (org-get-category))
+                   (habit (and habitp (org-habit-parse-todo)))
+                   (priority (if habit (org-habit-get-priority habit)
+                               (+ 99 diff (org-get-priority))))
 		   (inherited-tags
 		    (or (eq org-agenda-show-inherited-tags 'always)
 			(and (listp org-agenda-show-inherited-tags)
@@ -6273,12 +6281,11 @@ scheduled items with an hour specification like [h]h:mm."
 		       (if (and todayp pastschedp)
 			   (format past diff)
 			 first))
-		     head level category tags time nil habitp))
+		     head level category priority tags time nil habitp))
 		   (face (cond ((and (not habitp) pastschedp)
 				'org-scheduled-previously)
 			       (todayp 'org-scheduled-today)
-			       (t 'org-scheduled)))
-		   (habitp (and habitp (org-habit-parse-todo))))
+			       (t 'org-scheduled))))
 	      (org-add-props item props
 		'undone-face face
 		'face (if donep 'org-agenda-done face)
@@ -6289,9 +6296,8 @@ scheduled items with an hour specification like [h]h:mm."
 		'ts-date schedule
 		'warntime warntime
 		'level level
-		'priority (if habitp (org-habit-get-priority habitp)
-			    (+ 99 diff (org-get-priority item)))
-		'org-habit-p habitp
+		'priority priority
+		'org-habit-p habit
 		'todo-state todo-state)
 	      (push item scheduled-items))))))
     (nreverse scheduled-items)))
@@ -6309,7 +6315,7 @@ scheduled items with an hour specification like [h]h:mm."
 	 (regexp org-tr-regexp)
 	 (d0 (calendar-absolute-from-gregorian date))
 	 marker hdmarker ee txt d1 d2 s1 s2 category
-	 level todo-state tags pos head donep inherited-tags)
+	 level priority todo-state tags pos head donep inherited-tags)
     (goto-char (point-min))
     (while (re-search-forward regexp nil t)
       (catch :skip
@@ -6360,7 +6366,7 @@ scheduled items with an hour specification like [h]h:mm."
 			    (and (eq org-agenda-show-inherited-tags t)
 				 (or (eq org-agenda-use-tag-inheritance t)
 				     (memq 'agenda org-agenda-use-tag-inheritance))))
-
+			priority (org-get-priority)
 			tags (org-get-tags-at nil (not inherited-tags)))
 		  (setq level (make-string (org-reduced-level (org-outline-level)) ? ))
 		  (looking-at "\\*+[ \t]+\\(.*\\)")
@@ -6377,7 +6383,7 @@ scheduled items with an hour specification like [h]h:mm."
 				(nth (if (= d1 d2) 0 1)
 				     org-agenda-timerange-leaders)
 				(1+ (- d0 d1)) (1+ (- d2 d1)))
-			       head level category tags
+			       head level category priority tags
 			       (cond ((and (= d1 d0) (= d2 d0))
 				      (concat "<" start-time ">--<" end-time ">"))
                                      ((= d1 d0)
@@ -6390,7 +6396,7 @@ scheduled items with an hour specification like [h]h:mm."
 		  'type "block" 'date date
 		  'level level
 		  'todo-state todo-state
-		  'priority (org-get-priority txt))
+		  'priority priority)
 		(push txt ee))))
 	(goto-char pos)))
     ;; Sort the entries by expiration date.
@@ -6423,8 +6429,9 @@ The flag is set if the currently compiled format contains a `%b'.")
 	  (cl-return (cadr entry))
 	(cl-return (apply #'create-image (cdr entry)))))))
 
-(defun org-agenda-format-item (extra txt &optional level category tags dotime
-				     remove-re habitp)
+(defun org-agenda-format-item (extra txt
+                                     &optional level category priority tags
+                                     dotime remove-re habitp)
   "Format TXT to be inserted into the agenda buffer.
 In particular, add the prefix and corresponding text properties.
 
@@ -6433,10 +6440,11 @@ LEVEL may be a string to replace the `%l' specifier.
 CATEGORY (a string, a symbol or nil) may be used to overrule the default
 category taken from local variable or file name.  It will replace the `%c'
 specifier in the format.
+PRIORITY can be the integer priority of the headline.
+TAGS can be the tags of the headline.
 DOTIME, when non-nil, indicates that a time-of-day should be extracted from
 TXT for sorting of this entry, and for the `%t' specifier in the format.
 When DOTIME is a string, this string is searched for a time before TXT is.
-TAGS can be the tags of the headline.
 Any match of REMOVE-RE will be removed from TXT."
   ;; We keep the org-prefix-* variable values along with a compiled
   ;; formatter, so that multiple agendas existing at the same time do
@@ -6453,6 +6461,9 @@ Any match of REMOVE-RE will be removed from TXT."
     (save-match-data
       ;; Diary entries sometimes have extra whitespace at the beginning
       (setq txt (org-trim txt))
+
+      ;; Fix the priority part in txt
+      (setq txt (org-agenda-fix-displayed-priority txt priority))
 
       ;; Fix the tags part in txt
       (setq txt (org-agenda-fix-displayed-tags
@@ -6623,6 +6634,20 @@ The modified list may contain inherited tags, and tags matched by
 			  (if have-i "::" ":"))))))
   txt)
 
+(defun org-agenda-fix-displayed-priority (txt priority)
+  "Modifies TXT to show correct PRIORITY.
+Respects `org-use-priority-inheritance' by adding PRIORITY if not
+already present. No change is made if `org-get-priority-function'
+is non-nil since it may not be using standard priority cookies."
+  (when (and priority
+             org-use-priority-inheritance
+             (not (functionp org-get-priority-function))
+             (not (string-match org-priority-regexp txt)))
+    (let ((priority-str
+           (char-to-string (org-priority-integer-to-char priority))))
+      (setq txt (concat "[#" priority-str "] " txt))))
+  txt)
+
 (defun org-downcase-keep-props (s)
   (let ((props (text-properties-at 0 s)))
     (setq s (downcase s))
@@ -6658,14 +6683,14 @@ TODAYP is t when the current agenda view is on today."
 	(unless (and remove (member time have))
 	  (setq time (replace-regexp-in-string " " "0" (format "%04s" time)))
 	  (push (org-agenda-format-item
-		 nil string nil "" nil
+		 nil string nil "" nil nil nil
 		 (concat (substring time 0 -2) ":" (substring time -2)))
 		new)
 	  (put-text-property
 	   2 (length (car new)) 'face 'org-time-grid (car new))))
       (when (and todayp org-agenda-show-current-time-in-grid)
 	(push (org-agenda-format-item
-	       nil org-agenda-current-time-string nil "" nil
+	       nil org-agenda-current-time-string nil "" nil nil nil
 	       (format-time-string "%H:%M "))
 	      new)
 	(put-text-property
@@ -8928,6 +8953,10 @@ If FORCE-TAGS is non nil, the car of it returns the new tags."
   (let* ((inhibit-read-only t)
 	 (line (org-current-line))
 	 (org-agenda-buffer (current-buffer))
+         (priority (with-current-buffer (marker-buffer hdmarker)
+                     (org-with-wide-buffer
+                      (goto-char hdmarker)
+                      (org-get-priority))))
 	 (thetags (with-current-buffer (marker-buffer hdmarker)
 		    (org-with-wide-buffer
 		     (goto-char hdmarker)
@@ -8953,7 +8982,7 @@ If FORCE-TAGS is non nil, the car of it returns the new tags."
 		      (extra (org-get-at-bol 'extra)))
 		  (with-current-buffer (marker-buffer hdmarker)
 		    (org-with-wide-buffer
-		     (org-agenda-format-item extra newhead level cat tags dotime))))
+		     (org-agenda-format-item extra newhead level cat prioritya tags dotime))))
 		pl (text-property-any (point-at-bol) (point-at-eol) 'org-heading t)
 		undone-face (org-get-at-bol 'undone-face)
 		done-face (org-get-at-bol 'done-face))
@@ -9481,7 +9510,7 @@ the resulting entry will not be shown.  When TEXT is empty, switch to
 	    ;; Use org-agenda-format-item to parse text for a time-range and
 	    ;; remove it.  FIXME: This is a hack, we should refactor
 	    ;; that function to make time extraction available separately
-	    (setq fmt (org-agenda-format-item nil text nil nil nil t)
+	    (setq fmt (org-agenda-format-item nil text nil nil nil nil nil t)
 		  time (get-text-property 0 'time fmt)
 		  time2 (if (> (length time) 0)
 			    ;; split-string removes trailing ...... if

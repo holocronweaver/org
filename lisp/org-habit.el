@@ -248,23 +248,23 @@ This list represents a \"habit\" for the rest of this module."
 (defsubst org-habit-get-priority (habit &optional moment)
   "Determine the relative priority of a habit.
 This must take into account not just urgency, but consistency as well."
-  (let ((pri 1000)
-	(now (if moment (time-to-days moment) (org-today)))
-	(scheduled (org-habit-scheduled habit))
-	(deadline (org-habit-deadline habit)))
+  (let ((pri (org-get-priority))
+        (now (if moment (time-to-days moment) (org-today)))
+        (scheduled (org-habit-scheduled habit))
+        (deadline (org-habit-deadline habit)))
     ;; add 10 for every day past the scheduled date, and subtract for every
     ;; day before it
     (setq pri (+ pri (* (- now scheduled) 10)))
     ;; add 50 if the deadline is today
     (if (and (/= scheduled deadline)
-	     (= now deadline))
-	(setq pri (+ pri 50)))
+             (= now deadline))
+        (setq pri (+ pri 50)))
     ;; add 100 for every day beyond the deadline date, and subtract 10 for
     ;; every day before it
     (let ((slip (- now (1- deadline))))
       (if (> slip 0)
-	  (setq pri (+ pri (* slip 100)))
-	(setq pri (+ pri (* slip 10)))))
+          (setq pri (+ pri (* slip 100)))
+        (setq pri (+ pri (* slip 10)))))
     pri))
 
 (defun org-habit-get-faces (habit &optional now-days scheduled-days donep)
