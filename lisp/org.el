@@ -13490,35 +13490,30 @@ and by additional input from the age of a schedules or deadline entry."
 
 (defun org-get-priority (&optional pos local)
   "Get integer priority at POS.
-POS defaults to point. If LOCAL is non-nil priority inheritance
+POS defaults to point.  If LOCAL is non-nil priority inheritance
 is ignored regardless of the value of
-`org-use-priority-inheritance'. Returns nil if no priority can be
+`org-use-priority-inheritance'.  Returns nil if no priority can be
 determined at POS."
   (save-excursion
     (save-restriction
       (widen)
       (goto-char (or pos (point)))
-      (save-match-data
-	(cl-loop
-	 (beginning-of-line)
-	 (if (looking-at org-heading-regexp)
-	     (let ((heading (match-string 0)))
-	       (if (functionp org-get-priority-function)
-		   (let ((priority (funcall org-get-priority-function)))
-		     (unless (eq priority t)
-		       (return priority)))
-		 (when (string-match org-priority-regexp heading)
-		   (return (org-priority-char-to-integer (string-to-char (match-string 2 heading))))
-		   ))
-	       (when (or local
-			 (not org-use-priority-inheritance)
-			 (not (org-up-heading-safe)))
-		 (return (org-priority-char-to-integer org-default-priority))))
-	   (return nil)
-	   )
-	 )
-	)))
-  )
+      (beginning-of-line)
+      (if (not (looking-at org-heading-regexp))
+	  (return nil)
+	(save-match-data
+	  (cl-loop
+	   (if (functionp org-get-priority-function)
+	       (let ((priority (funcall org-get-priority-function)))
+		 (unless (eq priority t)
+		   (return priority)))
+	     (when (looking-at org-priority-regexp)
+	       (return (org-priority-char-to-integer
+			(string-to-char (match-string-no-properties 2))))))
+	   (unless (and (not local)
+			org-use-priority-inheritance
+			(org-up-heading-safe))
+	     (return (org-priority-char-to-integer org-default-priority)))))))))
 
 ;;;; Tags
 
@@ -13605,7 +13600,6 @@ headlines matching this string."
 		;; TODO: is the 1-2 difference a bug?
 		(when (match-end 1) (match-string-no-properties 2))
 		tags (when (match-end 4) (match-string-no-properties 4)))
-          (setq priority (org-get-priority))
 	  (goto-char (setq lspos (match-beginning 0)))
 	  (setq level (org-reduced-level (org-outline-level))
 		category (org-get-category))
@@ -13672,7 +13666,8 @@ headlines matching this string."
 		    (match-beginning 1) (match-end 1)))
 	      (org-show-context 'tags-tree))
 	     ((eq action 'agenda)
-	      (setq txt (org-agenda-format-item
+	      (setq priority (org-get-priority)
+		    txt (org-agenda-format-item
 			 ""
 			 (concat
 			  (if (eq org-tags-match-list-sublevels 'indented)
