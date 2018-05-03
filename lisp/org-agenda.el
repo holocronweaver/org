@@ -8982,7 +8982,7 @@ If FORCE-TAGS is non nil, the car of it returns the new tags."
 		      (extra (org-get-at-bol 'extra)))
 		  (with-current-buffer (marker-buffer hdmarker)
 		    (org-with-wide-buffer
-		     (org-agenda-format-item extra newhead level cat prioritya tags dotime))))
+		     (org-agenda-format-item extra newhead level cat priority tags dotime))))
 		pl (text-property-any (point-at-bol) (point-at-eol) 'org-heading t)
 		undone-face (org-get-at-bol 'undone-face)
 		done-face (org-get-at-bol 'done-face))
