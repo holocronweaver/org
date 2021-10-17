@@ -13672,6 +13672,10 @@ and by additional input from the age of a schedules or deadline entry."
   "Convert priority INTEGER to a character priority."
   (- org-lowest-priority (/ integer 1000)))
 
+;;TODO: Replace cl with another solution?
+;; https://emacs.stackexchange.com/questions/7823/how-do-you-return-from-a-function-at-an-arbitrary-point
+(require 'cl)
+
 (defun org-get-priority (&optional pos local)
   "Get integer priority at POS.
 POS defaults to point.  If LOCAL is non-nil priority inheritance
